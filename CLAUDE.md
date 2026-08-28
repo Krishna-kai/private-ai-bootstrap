@@ -23,8 +23,15 @@ actually worked before moving to the next - don't assume.
 3. Ask the user what domain they own on Cloudflare and what subdomain they
    want the chat at (default suggestion: `chat.<their domain>`). Set
    `WEBUI_URL=https://chat.<their-domain>` in `.env` now, even though the
-   tunnel isn't live yet - it's used for CORS and generated links, not just
-   cosmetic.
+   tunnel isn't live yet - it's used for generated links, not just cosmetic.
+   **Do not touch `CORS_ALLOW_ORIGIN` to match** - leave it as
+   `http://localhost:3000` for now. It's a separate variable on purpose: if
+   it's set to the public domain before local testing, the browser's
+   `http://localhost:3000` origin gets rejected and chat streaming silently
+   hangs (backend returns 200, UI never renders it - confirmed by hitting
+   this exact bug while verifying this repo). Add the public domain to
+   `CORS_ALLOW_ORIGIN` (semicolon-separated, keep localhost too) only once
+   Part C's tunnel is actually live and you're testing through it.
 4. Bring up the model server and chat UI (tunnel deliberately omitted, no
    token yet):
    ```bash
@@ -35,7 +42,11 @@ actually worked before moving to the next - don't assume.
    Confirm you got a real response, not an error.
 5. Check `http://localhost:3000` is reachable and shows the OpenWebUI login
    page (`curl -s -o /dev/null -w "%{http_code}" http://localhost:3000`
-   should return 200).
+   should return 200). If you can, actually create a test account and send
+   one real chat message through the UI (not just the CLI) - the CLI test in
+   step 4 proves Ollama works, but only a real browser round-trip through
+   OpenWebUI proves the full chain, including CORS/websocket, actually
+   works.
 6. Report back: local wiring confirmed, waiting on Part B before continuing.
    **Stop here until the human completes Part B and gives you the tunnel
    token.**

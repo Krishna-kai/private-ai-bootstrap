@@ -10,8 +10,13 @@ services:
     # as any other file.
     volumes:
       - ./data/ollama:/root/.ollama
-    ports:
-      - "11434:11434"
+    # No host port published, deliberately: openwebui reaches this container
+    # over the internal Docker network (http://ollama:11434, set below), and
+    # every command in this README uses `docker compose exec ollama ...`,
+    # not the host port. Publishing 11434 here conflicts with any machine
+    # that already runs Ollama natively (very common - Ollama's own default
+    # port is the same 11434) - hit exactly that conflict verifying this
+    # bootstrap on a machine with native Ollama already running.
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG:-main}
@@ -31,10 +36,27 @@ services:
       # run, then flip back (or unset) once accounts exist.
       DEFAULT_USER_ROLE: ${DEFAULT_USER_ROLE:-pending}
       # Reachable from the internet via the Cloudflare Tunnel - set explicitly
-      # so CORS and generated links (shares, resets) point at the real public
-      # hostname instead of an internal container address.
+      # so generated links (shares, resets) point at the real public hostname
+      # instead of an internal container address.
       WEBUI_URL: ${WEBUI_URL:-http://localhost:3000}
-      CORS_ALLOW_ORIGIN: ${WEBUI_URL:-http://localhost:3000}
+      # Deliberately its OWN variable, not just "= WEBUI_URL" - CLAUDE.md's
+      # own runbook sets WEBUI_URL to the real public domain during local
+      # testing (Part A, before the tunnel exists). Confirmed by hitting it
+      # for real: with CORS_ALLOW_ORIGIN following WEBUI_URL onto the public
+      # domain while testing via http://localhost:3000, a chat message
+      # completed on the Ollama/OpenWebUI backend in ~1s (visible in logs)
+      # but never rendered in the browser - reverting CORS_ALLOW_ORIGIN to
+      # match the browser's actual origin fixed it on retest, full round
+      # trip confirmed working. (The browser console still logs a failed
+      # `ws://.../socket.io` connection either way, fixed or not - this
+      # minimal setup has no reverse proxy in front to carry the websocket
+      # upgrade, so OpenWebUI falls back to HTTP polling for real-time
+      # updates; that fallback is what's actually working here, and it's
+      # fine. Add nginx in front, like local-ai-packaged does, if you want
+      # the raw websocket transport instead.) Keep localhost in this list
+      # always; add the public domain once you have a tunnel,
+      # semicolon-separated, same pattern OpenWebUI itself uses.
+      CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-http://localhost:3000}
       WEBUI_NAME: ${WEBUI_NAME:-Private ChatGPT}
       # A private tool for people you know, no reason to phone home.
       ANONYMIZED_TELEMETRY: "false"

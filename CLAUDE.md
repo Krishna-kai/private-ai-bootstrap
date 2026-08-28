@@ -5,11 +5,12 @@ running on: `ollama` (serves a local model), `openwebui` (the ChatGPT-style
 front end), and `cloudflared` (exposes it publicly with no port-forwarding).
 
 This is split into things you can do entirely on your own, and things that
-genuinely need a human with browser + Cloudflare account access. Don't try
-to work around the human steps - a Cloudflare Tunnel token can only be
-retrieved by someone logged into the dashboard in a real browser, there is
-no API or CLI path around that for a first-time setup. Confirm each step
-actually worked before moving to the next - don't assume.
+need a human. Part B below has two ways to get the tunnel created - one
+where the human clicks through the dashboard themselves, one where the
+human creates a single scoped API token and you do the rest via the
+Cloudflare API. Ask which the human wants before starting Part B; don't
+assume. Confirm each step actually worked before moving to the next - don't
+assume there either.
 
 ## Part A - you can do this on your own
 
@@ -58,7 +59,12 @@ check the upstream project directly -
 and [docs.openwebui.com](https://docs.openwebui.com) - rather than guessing.
 This runbook only covers first-run setup.
 
-## Part B - the human does this (you cannot do it for them)
+## Part B - ask the human which path, then follow it
+
+Two ways to get the tunnel created. Ask which the human wants - don't just
+pick one.
+
+### Path A - human does it in the dashboard
 
 Tell the user, plainly, to:
 
@@ -70,10 +76,42 @@ Tell the user, plainly, to:
    `chat.<their-domain>`, type `HTTP`, URL `openwebui:8080`.
 4. Paste the token back to you (the agent).
 
-You genuinely cannot do this part. There is no unattended API path to create
-a tunnel token for the first time - it requires an interactive OAuth login
-in a browser. Don't attempt to script around this with `cloudflared login`
-either; that opens a browser too and still needs the human present.
+You genuinely cannot do this path yourself - creating a tunnel token this
+way requires an interactive OAuth login in a real browser. Don't attempt to
+script around it with `cloudflared login` either; that opens a browser too
+and still needs the human present.
+
+### Path B - human gives you an API token, you do the rest
+
+Lighter ask of the human: one dashboard visit to create a scoped API token,
+not the full tunnel wizard. Tell them: Cloudflare dashboard -> profile icon
+-> My Profile -> API Tokens -> Create Token -> Custom token -> two
+permissions, **Account > Cloudflare Tunnel > Edit** and **Zone > DNS >
+Edit** (scoped to their domain) -> Create -> paste the token to you.
+
+Once you have it, do this yourself via the Cloudflare API (ask for explicit
+confirmation before each mutating call - these have real external effects,
+same as any other action that changes a live system):
+
+1. `POST https://api.cloudflare.com/client/v4/accounts/{account_id}/cfd_tunnel`
+   with body `{"name": "<something descriptive>", "config_src": "cloudflare"}`.
+   Returns the tunnel's `id`.
+2. `GET https://api.cloudflare.com/client/v4/accounts/{account_id}/cfd_tunnel/{tunnel_id}/token`
+   returns the connector token. Put it in `.env` as `CLOUDFLARE_TUNNEL_TOKEN`
+   - same value Path A gets from the dashboard.
+3. `PUT https://api.cloudflare.com/client/v4/accounts/{account_id}/cfd_tunnel/{tunnel_id}/configurations`
+   with the ingress config (see "Why no local config.yml" in `README.md` for
+   the exact shape and how to check whether a tunnel is dashboard-managed -
+   this GET/PUT pattern is independently verified this session, against a
+   real tunnel).
+4. `POST https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records`
+   with `{"type": "CNAME", "name": "chat", "content": "<tunnel_id>.cfargotunnel.com", "proxied": true}`.
+
+Be honest with the human about provenance: steps 1, 2, and 4 are sourced
+from Cloudflare's own API reference, not personally run end-to-end in this
+repo yet. Step 3's GET/PUT pattern is independently verified. If step 1, 2,
+or 4 doesn't behave as documented, say so plainly rather than papering over
+it - don't claim success you haven't confirmed.
 
 ## Part C - resume once you have the token
 

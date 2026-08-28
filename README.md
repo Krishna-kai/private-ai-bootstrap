@@ -12,9 +12,10 @@ gotcha in this README actually happened, nothing here is speculative.
 
 **Setting this up with an AI coding agent (Claude Code or similar)?** Point
 it at [`CLAUDE.md`](CLAUDE.md) - it's a runbook written for an agent to
-follow directly, with the one part it genuinely can't do for you (the
-Cloudflare dashboard steps, which need a human logged into a browser)
-clearly marked. Doing it by hand yourself? Keep reading below, same steps.
+follow directly. The Cloudflare Tunnel step (below) has two paths: one that
+genuinely needs you in the dashboard the whole way, and a lighter one where
+you create a single API token and the agent does the rest. Doing it by hand
+yourself? Keep reading below, same steps.
 
 ## Architecture
 
@@ -39,14 +40,50 @@ on your router:
   themes, more auth providers), the upstream repo's own README and
   [docs](https://docs.openwebui.com) are the reference, not this file.
 
-## Prerequisites
+## Part 0 - before you start
 
-- Docker Desktop (or plain Docker + Compose) on the box that will run this.
-- A domain that's already an active zone on Cloudflare (free plan is fine).
-- A GPU or a reasonably capable CPU for Ollama. No GPU yet? Point OpenWebUI
-  at a cloud model API instead for now (any OpenAI-compatible endpoint works
-  via `OPENAI_API_BASE_URL`/`OPENAI_API_KEY`) and switch to local Ollama
-  later - both can run side by side once you do, no hard cutover.
+Everything else in this README assumes these three things are already true.
+If they are, skip to Step 1.
+
+### 1. Docker
+
+- **macOS/Windows**: install [Docker Desktop](https://www.docker.com/products/docker-desktop/), open it once so it finishes setup.
+- **Linux**: install [Docker Engine](https://docs.docker.com/engine/install/) + the Compose plugin (`docker compose version` should work, not just `docker-compose`).
+
+### 2. A GPU or capable CPU for Ollama
+
+No GPU yet? Point OpenWebUI at a cloud model API instead for now (any
+OpenAI-compatible endpoint works via `OPENAI_API_BASE_URL`/`OPENAI_API_KEY`)
+and switch to local Ollama later - both can run side by side once you do,
+no hard cutover.
+
+### 3. A domain, pointed at Cloudflare
+
+Everything downstream (the website, the tunnel, the DNS records) needs an
+active Cloudflare zone to attach to. Two cases:
+
+- **You already have a domain on Cloudflare** (for anything - email routing,
+  another site, whatever): nothing to do, skip ahead.
+- **You have a domain registered somewhere else** (GoDaddy, Namecheap, your
+  registrar of choice) **or don't have one yet**:
+  1. If you don't have a domain, buy one from any registrar - nothing
+     Cloudflare-specific about this step.
+  2. Sign up for a free [Cloudflare account](https://dash.cloudflare.com/sign-up).
+  3. Dashboard -> Add a site -> enter your domain -> pick the Free plan.
+     Cloudflare scans your existing DNS records and shows you two
+     nameservers (e.g. `aida.ns.cloudflare.com`, `walt.ns.cloudflare.com`).
+  4. Go to your domain registrar's site, find the nameserver settings for
+     that domain, and replace whatever's there with the two Cloudflare gave
+     you. This is the one step outside Cloudflare entirely - every registrar
+     has this screen somewhere, usually called "Nameservers" or "DNS
+     Management."
+  5. Propagation is usually minutes, sometimes a few hours. Cloudflare
+     emails you once it detects the switch; `dig NS yourdomain.com` also
+     shows it once it's live.
+
+Nothing else in this repo can work until this step is done - Cloudflare
+Pages (the website) and Cloudflare Tunnel (the chat) both require an active
+zone to attach to.
 
 ## Step 1 - the website
 
@@ -74,9 +111,11 @@ expose anything to the internet.
 
 ## Step 3 - Cloudflare Tunnel
 
-**Use the dashboard, token-based "Docker connector" tunnel, not a local
-`config.yml`.** This is a deliberate choice, not a simplification - see
-"Why no local config.yml" below.
+**Use a token-based "Docker connector" tunnel, not a local `config.yml`.**
+This is a deliberate choice, not a simplification - see "Why no local
+config.yml" below. Two ways to actually create it - pick one:
+
+### Path A - dashboard, by hand (no setup, works for anyone)
 
 1. Cloudflare Zero Trust dashboard -> Networks -> Tunnels -> Create a tunnel
    -> choose the **Docker** connector.
@@ -93,6 +132,37 @@ expose anything to the internet.
 
    Saving this also auto-creates the DNS CNAME for `chat.yourdomain.com`
    pointing at your tunnel - no manual DNS step.
+
+### Path B - one API token, then your AI agent does the rest
+
+Faster if you're doing this with an agent (Claude Code or similar) and don't
+want to leave the terminal. Trade-off: still one dashboard visit, but a
+lighter one - creating a scoped API token instead of clicking through the
+tunnel wizard yourself.
+
+1. Cloudflare dashboard -> your profile icon -> **My Profile** -> **API
+   Tokens** -> **Create Token** -> **Custom token**. Give it two
+   permissions: **Account > Cloudflare Tunnel > Edit**, and **Zone > DNS >
+   Edit**, scoped to your specific domain. Create it, copy the token (shown
+   once).
+2. Hand the token to your agent and say "create the tunnel and route
+   `chat.yourdomain.com` to it." From here the agent can do the whole rest
+   of this step itself via the Cloudflare API - no more dashboard visits:
+   - `POST /accounts/{account_id}/cfd_tunnel` (`{"name": "...", "config_src": "cloudflare"}`) creates the tunnel and returns its `id`.
+   - `GET /accounts/{account_id}/cfd_tunnel/{tunnel_id}/token` returns the connector token - same value Path A copies from the dashboard, put it in `.env` as `CLOUDFLARE_TUNNEL_TOKEN`.
+   - `PUT /accounts/{account_id}/cfd_tunnel/{tunnel_id}/configurations` sets the ingress rule (`chat.yourdomain.com` -> `http://openwebui:8080`) - same GET/PUT pattern documented below under "Why no local config.yml", confirmed working against a real tunnel while building this bootstrap.
+   - `POST /zones/{zone_id}/dns_records` (`{"type": "CNAME", "name": "chat", "content": "<tunnel_id>.cfargotunnel.com", "proxied": true}`) creates the DNS record Path A gets for free from the dashboard.
+
+   **Honesty check on this path**: the `configurations` GET/PUT calls are
+   independently verified this session, against a real tunnel. Tunnel
+   creation and the DNS record call are sourced from Cloudflare's own API
+   reference, not personally run end-to-end here yet - if you hit something
+   that doesn't match, that's why, and it's worth reporting back.
+   Mutating API calls like these will likely prompt for your explicit
+   confirmation before running, same as any other action with real
+   external effects - that's expected, not a bug.
+
+Either path, once the token is in `.env`:
 
 ```bash
 docker compose up -d cloudflared

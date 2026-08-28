@@ -30,8 +30,13 @@ on your router:
   [`website/README.md`](website/README.md). Not part of the Docker stack at
   all.
 - **The private chat** is `docker-compose.yml` in this folder: `ollama`
-  (serves the model), `openwebui` (the ChatGPT-style front end), and
-  `cloudflared` (the tunnel). `docker compose up -d` and it's running.
+  (serves the model), `openwebui` (the ChatGPT-style front end - upstream
+  project: [github.com/open-webui/open-webui](https://github.com/open-webui/open-webui)),
+  and `cloudflared` (the tunnel). `docker compose up -d` and it's running.
+  This bootstrap only covers first-run setup - for anything past that
+  (user roles and permissions, RAG/knowledge bases, model parameters,
+  themes, more auth providers), the upstream repo's own README and
+  [docs](https://docs.openwebui.com) are the reference, not this file.
 
 ## Prerequisites
 
@@ -167,3 +172,17 @@ docker compose pull openwebui && docker compose up -d openwebui   # update OpenW
 docker compose exec ollama ollama pull <model>                     # add/update a model
 docker compose logs ollama / openwebui / cloudflared                # logs
 ```
+
+## Credits
+
+This bootstrap is glue, not the hard part. The actual chat application and
+model runtime are separate open source projects - go there for anything
+beyond first-run setup:
+
+- **[Open WebUI](https://github.com/open-webui/open-webui)** - the chat
+  front end this whole thing is built around.
+- **[Ollama](https://github.com/ollama/ollama)** - runs the model.
+- **[cloudflared](https://github.com/cloudflare/cloudflared)** - the tunnel
+  client, from Cloudflare.
+
+MIT licensed, see [`LICENSE`](LICENSE).

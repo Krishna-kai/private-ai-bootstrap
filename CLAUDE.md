@@ -40,6 +40,13 @@ actually worked before moving to the next - don't assume.
    **Stop here until the human completes Part B and gives you the tunnel
    token.**
 
+If something about OpenWebUI itself goes wrong that isn't covered in this
+file (auth providers, RAG/knowledge bases, model parameters, permissions),
+check the upstream project directly -
+[github.com/open-webui/open-webui](https://github.com/open-webui/open-webui)
+and [docs.openwebui.com](https://docs.openwebui.com) - rather than guessing.
+This runbook only covers first-run setup.
+
 ## Part B - the human does this (you cannot do it for them)
 
 Tell the user, plainly, to:

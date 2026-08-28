@@ -1,14 +1,25 @@
 # website
 
-Placeholder static site for `yourdomain.com`, deployed to Cloudflare Pages -
-separate from the Docker stack in the parent folder. Swap `index.html` for
-your real site (Astro, plain HTML, whatever you want); the deploy mechanics
-below don't change.
+Minimal Astro site for `yourdomain.com` (static output, no adapter) -
+separate from the Docker stack in the parent folder, deployed to Cloudflare
+Pages. Swap the content in `src/pages/index.astro` for your real site; the
+deploy mechanics below don't change.
 
-## Deploy (manual - no CI/CD, no auto-deploy on push)
+## Local dev
 
 ```bash
-npx wrangler pages deploy . --project-name yourdomain-site
+npm install
+npm run dev       # http://localhost:4321
+npm run build     # outputs to dist/
+npm run preview   # serve the built dist/ locally, closest to prod
+```
+
+## Deploy (Cloudflare Pages, manual - no CI/CD, no auto-deploy on push)
+
+```bash
+npm install
+npm run build
+npx wrangler pages deploy dist --project-name yourdomain-site
 ```
 
 First deploy creates the Pages project if it doesn't exist yet. Then:

@@ -105,3 +105,14 @@ either; that opens a browser too and still needs the human present.
 7. Report back: tunnel healthy, accounts created, signup locked, external
    reachability confirmed (or explicitly flag if you couldn't get
    confirmation of the phone/cellular check - don't claim it silently).
+
+## If asked to upgrade later
+
+`ollama` and `openwebui` are bind-mounted to `./data/ollama` and
+`./data/openwebui` on the host, not Docker-managed volumes - pulled models,
+accounts, and chat history live in those plain folders, not inside the
+container. `docker compose pull <service> && docker compose up -d <service>`
+is always safe: it replaces the container's code, never `./data/`. Never
+run `docker compose down -v` or manually delete anything under `./data/`
+without being explicitly asked to - that's the one command that would
+actually destroy it.

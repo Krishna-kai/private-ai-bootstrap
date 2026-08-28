@@ -3,8 +3,13 @@ services:
     image: ollama/ollama:${OLLAMA_DOCKER_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
+    # Bind mount, not a named volume - pulled models live at ./data/ollama on
+    # the host, in plain sight. `docker compose pull && up -d` only ever
+    # replaces the ollama binary/image, never this folder, so upgrading never
+    # re-downloads or loses a model. Back it up by copying the folder, same
+    # as any other file.
     volumes:
-      - ollama:/root/.ollama
+      - ./data/ollama:/root/.ollama
     ports:
       - "11434:11434"
 
@@ -35,8 +40,12 @@ services:
       ANONYMIZED_TELEMETRY: "false"
       DO_NOT_TRACK: "true"
       SCARF_NO_ANALYTICS: "true"
+    # Bind mount, not a named volume - chats, accounts, and settings live at
+    # ./data/openwebui on the host. Same reasoning as ollama above: pulling a
+    # newer openwebui image and recreating the container never touches this
+    # folder, so nobody's account or chat history disappears on upgrade.
     volumes:
-      - openwebui:/app/backend/data
+      - ./data/openwebui:/app/backend/data
     ports:
       - "3000:8080"
 
@@ -66,7 +75,3 @@ services:
       timeout: 10s
       start_period: 30s
       retries: 3
-
-volumes:
-  ollama:
-  openwebui:

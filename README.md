@@ -26,9 +26,10 @@ chat.yourdomain.com     -> Cloudflare Tunnel  -> Ollama + OpenWebUI, on your box
 Two independent pieces, both fronted by Cloudflare, neither exposing a port
 on your router:
 
-- **The website** is plain static hosting (Cloudflare Pages) - see
+- **The website** is a minimal [Astro](https://astro.build) site (static
+  output, no adapter) deployed to Cloudflare Pages - see
   [`website/README.md`](website/README.md). Not part of the Docker stack at
-  all.
+  all, no Node.js needed on the box running the chat stack.
 - **The private chat** is `docker-compose.yml` in this folder: `ollama`
   (serves the model), `openwebui` (the ChatGPT-style front end - upstream
   project: [github.com/open-webui/open-webui](https://github.com/open-webui/open-webui)),
@@ -165,12 +166,44 @@ Docker daemon starts. Enable "Start Docker Desktop when you log in" (or the
 Docker daemon at boot on Linux) and the whole stack survives a reboot with
 no manual intervention.
 
-## Maintenance
+## Upgrading without losing your data
+
+Both stateful services are **bind-mounted to plain folders on the host**,
+not opaque Docker-managed volumes:
+
+```
+./data/ollama       -> pulled models (ollama container's /root/.ollama)
+./data/openwebui     -> accounts, chat history, settings (openwebui's /app/backend/data)
+```
+
+Pulling a newer image and recreating the container only ever replaces the
+application code inside the container - it never touches `./data/`, because
+that folder lives on your host filesystem, not inside the container's own
+layer. That's the whole mechanism, and it's why upgrading is boringly safe:
 
 ```bash
-docker compose pull openwebui && docker compose up -d openwebui   # update OpenWebUI, data persists in the openwebui volume
-docker compose exec ollama ollama pull <model>                     # add/update a model
-docker compose logs ollama / openwebui / cloudflared                # logs
+docker compose pull openwebui && docker compose up -d openwebui   # update OpenWebUI - accounts/chats untouched
+docker compose pull ollama && docker compose up -d ollama          # update Ollama - pulled models untouched
+docker compose exec ollama ollama pull <model>                     # add/update a specific model
+```
+
+Back up either service by copying its folder while the stack is running
+(both are plain files, no special export step):
+
+```bash
+cp -R data/openwebui ~/backups/openwebui-$(date +%Y-%m-%d)
+cp -R data/ollama ~/backups/ollama-$(date +%Y-%m-%d)
+```
+
+`./data/` is gitignored - it's your real content, it never belongs in the
+repo.
+
+## Logs
+
+```bash
+docker compose logs ollama
+docker compose logs openwebui
+docker compose logs cloudflared
 ```
 
 ## Credits

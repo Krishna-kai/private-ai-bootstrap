@@ -1,0 +1,3 @@
+.env
+.env.validate-only
+.DS_Store

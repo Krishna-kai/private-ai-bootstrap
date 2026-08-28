@@ -1,0 +1,72 @@
+services:
+  ollama:
+    image: ollama/ollama:${OLLAMA_DOCKER_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG:-main}
+    restart: unless-stopped
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      WEBUI_AUTH: "true"
+      ENABLE_SIGNUP: ${ENABLE_SIGNUP:-false}
+      # Stable secret so sessions survive a container restart - without this,
+      # OpenWebUI generates a random one on every start and logs everyone out.
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      # Only matters during the bootstrap window (ENABLE_SIGNUP=true): every
+      # signup after the very first becomes role "pending", not "user", and
+      # can't chat until an admin approves it. Set to "user" for the bootstrap
+      # run, then flip back (or unset) once accounts exist.
+      DEFAULT_USER_ROLE: ${DEFAULT_USER_ROLE:-pending}
+      # Reachable from the internet via the Cloudflare Tunnel - set explicitly
+      # so CORS and generated links (shares, resets) point at the real public
+      # hostname instead of an internal container address.
+      WEBUI_URL: ${WEBUI_URL:-http://localhost:3000}
+      CORS_ALLOW_ORIGIN: ${WEBUI_URL:-http://localhost:3000}
+      WEBUI_NAME: ${WEBUI_NAME:-Private ChatGPT}
+      # A private tool for people you know, no reason to phone home.
+      ANONYMIZED_TELEMETRY: "false"
+      DO_NOT_TRACK: "true"
+      SCARF_NO_ANALYTICS: "true"
+    volumes:
+      - openwebui:/app/backend/data
+    ports:
+      - "3000:8080"
+
+  # Token-based Docker connector tunnel: hostname routing lives entirely in
+  # the Cloudflare Zero Trust dashboard (Networks -> Tunnels -> your tunnel ->
+  # Public Hostname tab), NOT in a local config file. This is deliberate -
+  # see README "Two ways to run a Cloudflare Tunnel" for why a local
+  # config.yml is the wrong default here.
+  #
+  # No depends_on: cloudflared should start and stay up independently of
+  # openwebui's own health, not get caught in a restart loop if openwebui is
+  # briefly unhealthy.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: always
+    command: tunnel --metrics 0.0.0.0:2000 run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+      GOMEMLIMIT: 64MiB
+      GOMAXPROCS: "1"
+    # cloudflare/cloudflared is a distroless image - no shell, no wget/curl.
+    # Use cloudflared's own `tunnel ready` subcommand for the healthcheck -
+    # it queries the same process's /ready endpoint, no extra binary needed.
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "0.0.0.0:2000", "ready"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  ollama:
+  openwebui:
